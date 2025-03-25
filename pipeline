@@ -1,13 +1,15 @@
-
 pipeline {
     agent any
     environment {
-        IMAGE_NAME = "java-sonarqube"
-        ARTIFACT_REPO = "us-central1-docker.pkg.dev/sam-452209/my-docker-1"
+        ZONE = "us-central1-c"
+        IMAGE_NAME = "sample1"
+       
+        CLUSTER_NAME = "cluster-2"
         GOOGLE_APPLICATION_CREDENTIALS = credentials('gcp')
+        DEPLOY_YAML = "frontend.yaml"
     }
     stages {
-        stage("Docker Hub Connection") {
+        stage('docker login') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'docker-hub', 
                                                   usernameVariable: 'DOCKER_USER', 
@@ -18,93 +20,74 @@ pipeline {
                 }
             }
         }
-
-        stage("Google Cloud Login") {
+        stage('gcp login') {
             steps {
                 sh '''
                 gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
-                gcloud auth configure-docker us-central1-docker.pkg.dev
                 '''
             }
         }
-
-        stage('Build & SonarQube Analysis') {
+        stage("build image") {
             steps {
-                withSonarQubeEnv('SonarQube') { // Use the name configured in Jenkins settings
-                    sh '''
-                           mvn clean verify sonar:sonar \
-                              -Dsonar.projectKey=java5 \
-                              -Dsonar.projectName='java5' \
-                              -Dsonar.host.url=http://35.208.183.106:9000 \
-                              -Dsonar.token=squ_0a7bbd396615376a3b5bad329f2cc8902c2245ec
-                    '''
+                sh '''
+                docker build -t "$IMAGE_NAME" .
+                docker tag "$IMAGE_NAME" ganesh6498/$IMAGE_NAME:$BUILD_NUMBER
+                '''
+            }
+        }
+        stage('docker push') {
+            steps {
+                sh '''
+                docker push ganesh6498/$IMAGE_NAME:$BUILD_NUMBER
+                '''
+            }
+        }
+        stage('Update Deployment File') {
+            steps {
+                script {
+                    echo 'Updating deployment YAML with the latest Docker image...'
+                    sh """
+                    sed -i 's|image: .*|image: ganesh6498/${IMAGE_NAME}:${BUILD_NUMBER}|' ${DEPLOY_YAML}
+                    """
                 }
             }
         }
-
-        stage("Quality Gate") {
+       
+        stage('terraform apply') {
             steps {
-              timeout(time: 10, unit: 'MINUTES') {
-                waitForQualityGate abortPipeline: true
-              }
-            }
-          }
-
-
-        stage("Run Docker Compose") {
-            steps {
-                sh '''
-                docker build -t "${IMAGE_NAME}" .
-                '''
-            }
-        }
-
-        stage("Terraform Create Instance") {
-            steps {
-                sh '''
+                sh ''' 
                 terraform init
                 terraform plan
                 terraform apply --auto-approve
                 '''
             }
         }
-
-        stage("Docker Tags & Push (Python App)") {
+        stage("wait for connection") {
             steps {
-                sh '''
-                docker tag ${IMAGE_NAME} ganesh6498/${IMAGE_NAME}:${BUILD_NUMBER}
-                docker push ganesh6498/${IMAGE_NAME}:${BUILD_NUMBER}
-
-                docker tag ${IMAGE_NAME} ${ARTIFACT_REPO}/${IMAGE_NAME}:${BUILD_NUMBER}
-                docker push ${ARTIFACT_REPO}/${IMAGE_NAME}:${BUILD_NUMBER}
-                '''
+                retry(3) {
+                    sh '''  
+                    sleep 10
+                    gcloud container clusters get-credentials $CLUSTER_NAME --zone $ZONE --project sam-453310
+                    '''
+                }
             }
         }
-
-        stage("Check Connection") {
+        
+        stage("deploy application ") {
             steps {
-                sh '''
-                ansible-inventory --graph
-                '''
+                sh ''' 
+
+                kubectl apply -f frontend.yaml
+                ''' 
             }
         }
-
-        stage("Ping Ansible") {
+        stage("get svc") {
             steps {
-                sh '''
-                sleep 10
-                ansible all -m ping
-                '''
-            }
-        }
-
-        stage("Ansible Deployment") {
-            steps {
-                sh '''
-                ansible-playbook ansible-java-sonarcude.yml -e build_number=$BUILD_NUMBER
+                sh ''' 
+                sleep 40
+                kubectl get svc
                 '''
             }
         }
     }
 }
-
