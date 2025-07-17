@@ -8,5 +8,5 @@ COPY . /usr/share/nginx/html/
 EXPOSE 80
 
 # command to start the run the nginx
-
+ss
 CMD ["nginx", "-g", "daemon off;"]
