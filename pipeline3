@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
       
-        IMAGE_NAME = "sample1"
+        IMAGE_NAME = "sample125"
        
        
         
@@ -38,7 +38,7 @@ pipeline {
         }
       
         stage("docker run"){
-            step {
+            steps {
                 sh ''' 
                  docker run -d -p 84:80 ganesh6498/$IMAGE_NAME:$BUIL_NUMBER
                  '''
