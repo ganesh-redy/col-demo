@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    environment {
+      
+        IMAGE_NAME = "sample1"
+       
+       
+        
+       
+    }
+    stages {
+        stage('docker login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub25', 
+                                                  usernameVariable: 'DOCKER_USER', 
+                                                  passwordVariable: 'DOCKER_PASS')]) {
+                    sh '''
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                    '''
+                }
+            }
+        }
+        
+        stage("build image") {
+            steps {
+                sh '''
+                docker build -t "$IMAGE_NAME" .
+                docker tag "$IMAGE_NAME" ganesh6498/$IMAGE_NAME:$BUILD_NUMBER
+                '''
+            }
+        }
+        stage('docker push') {
+            steps {
+                sh '''
+                docker push ganesh6498/$IMAGE_NAME:$BUILD_NUMBER
+                '''
+            }
+        }
+      
+        stage("docker run"){
+            step {
+                sh ''' 
+                 docker run -d -p 84:80 ganesh6498/$IMAGE_NAME:$BUIL_NUMBER
+                 '''
+               
+            }
+        }
+       
+        
+    
+    }
+}
